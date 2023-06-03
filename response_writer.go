@@ -17,6 +17,7 @@ const (
 )
 
 // ResponseWriter ...
+// 什么鬼，结合了http原生的一堆接口，然后自己又定义了好几个接口
 type ResponseWriter interface {
 	http.ResponseWriter
 	http.Hijacker
@@ -43,6 +44,7 @@ type ResponseWriter interface {
 	Pusher() http.Pusher
 }
 
+// 逻辑比较简单，就是对原生的ResponseWriter的接口做了一点小包装而已，调用调去还是原生的几个接口
 type responseWriter struct {
 	http.ResponseWriter
 	size   int

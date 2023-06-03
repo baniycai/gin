@@ -24,6 +24,7 @@ var (
 )
 
 // IRouter defines all router handle interface includes single and group router.
+// NOTE 定义了所有路由接口，IRoutes应该是常规路由接口，Group是路由组接口
 type IRouter interface {
 	IRoutes
 	Group(string, ...HandlerFunc) *RouterGroup
@@ -52,10 +53,11 @@ type IRoutes interface {
 
 // RouterGroup is used internally to configure router, a RouterGroup is associated with
 // a prefix and an array of handlers (middleware).
+// NOTE 管理具有相同属性的一组路由，比如共同的中间件或者路径前缀。算是gin中一个比较重要的结构
 type RouterGroup struct {
-	Handlers HandlersChain
+	Handlers HandlersChain // 中间件链，每个请求过来都会顺序执行该中间件；
 	basePath string
-	engine   *Engine
+	engine   *Engine // Engine中有RouterGroup，RouterGroup中又有Engine....两者都实现了IRoutes和IRouter接口
 	root     bool
 }
 
@@ -69,6 +71,7 @@ func (group *RouterGroup) Use(middleware ...HandlerFunc) IRoutes {
 
 // Group creates a new router group. You should add all the routes that have common middlewares or the same path prefix.
 // For example, all the routes that use a common middleware for authorization could be grouped.
+// 跟原有的group结合，产生一个新的router group
 func (group *RouterGroup) Group(relativePath string, handlers ...HandlerFunc) *RouterGroup {
 	return &RouterGroup{
 		Handlers: group.combineHandlers(handlers),
@@ -83,9 +86,12 @@ func (group *RouterGroup) BasePath() string {
 	return group.basePath
 }
 
+// 注册到engine的methodTrees中去，methodTrees是一个[]methodTree类型，methodTree包括method和rootNode两个属性，
+// 每个methodTree对应一个httpMethod，若path是完整的path(无:/*),则放在一个节点，若包含:/*，则需要切割到多个节点中去，形成节点链
+// 当然，每个节点都可以有多个子节点，所以a/:b和a/c应该是a在一个节点，:b和c作为其子节点(不确定，但大概率是)
 func (group *RouterGroup) handle(httpMethod, relativePath string, handlers HandlersChain) IRoutes {
-	absolutePath := group.calculateAbsolutePath(relativePath)
-	handlers = group.combineHandlers(handlers)
+	absolutePath := group.calculateAbsolutePath(relativePath) // base+relative
+	handlers = group.combineHandlers(handlers)                // NOTE 蛮关键的一步，将传入的handlers与中间件结合，新的放在最后，这样请求优先给中间件处理
 	group.engine.addRoute(httpMethod, absolutePath, handlers)
 	return group.returnObj()
 }
@@ -112,6 +118,7 @@ func (group *RouterGroup) POST(relativePath string, handlers ...HandlerFunc) IRo
 	return group.handle(http.MethodPost, relativePath, handlers)
 }
 
+// RouterGroup是被组合到Engine中的
 // GET is a shortcut for router.Handle("GET", path, handlers).
 func (group *RouterGroup) GET(relativePath string, handlers ...HandlerFunc) IRoutes {
 	return group.handle(http.MethodGet, relativePath, handlers)
@@ -238,11 +245,12 @@ func (group *RouterGroup) createStaticHandler(relativePath string, fs http.FileS
 	}
 }
 
+// NOTE 每个新加入的handlers都会被放在末尾，所以中间件的优先级最高，最先拿到请求
 func (group *RouterGroup) combineHandlers(handlers HandlersChain) HandlersChain {
 	finalSize := len(group.Handlers) + len(handlers)
 	assert1(finalSize < int(abortIndex), "too many handlers")
 	mergedHandlers := make(HandlersChain, finalSize)
-	copy(mergedHandlers, group.Handlers)
+	copy(mergedHandlers, group.Handlers) // 数据量大时，copy的性能更高
 	copy(mergedHandlers[len(group.Handlers):], handlers)
 	return mergedHandlers
 }

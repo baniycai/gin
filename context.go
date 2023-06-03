@@ -48,14 +48,15 @@ const abortIndex int8 = math.MaxInt8 >> 1
 
 // Context is the most important part of gin. It allows us to pass variables between middleware,
 // manage the flow, validate the JSON of a request and render a JSON response for example.
+// NOTE gin中最最关键的部分！！！
 type Context struct {
-	writermem responseWriter
+	writermem responseWriter // 原生
 	Request   *http.Request
-	Writer    ResponseWriter
+	Writer    ResponseWriter // 原生+其它。什么鬼呀......responseWriter实现了该接口
 
 	Params   Params
-	handlers HandlersChain
-	index    int8
+	handlers HandlersChain // 当前请求的处理链，该参数的值是一直在变化的，非固定的，会在请求时根据能否找到路由而切换成allNoMethod或allNoRoute...
+	index    int8          // 下一个要执行的handler的idx
 	fullPath string
 
 	engine       *Engine
@@ -168,6 +169,7 @@ func (c *Context) FullPath() string {
 // Next should be used only inside middleware.
 // It executes the pending handlers in the chain inside the calling handler.
 // See example in GitHub.
+// 用来控制handlers chain的执行，一个一个轮流执行，该方法只能在中间件中被调用
 func (c *Context) Next() {
 	c.index++
 	for c.index < int8(len(c.handlers)) {

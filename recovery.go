@@ -48,6 +48,8 @@ func RecoveryWithWriter(out io.Writer, recovery ...RecoveryFunc) HandlerFunc {
 }
 
 // CustomRecoveryWithWriter returns a middleware for a given writer that recovers from any panics and calls the provided handle func to handle it.
+// 返回一个recovery中间件，将recovery中捕获到err信息写入out中，并且调用handle来对err进行处理，估计是打印日志啥的吧
+// gin中中间件的定义都是func(c *Context) {},在中间件的最后一行都会调用c.Next()来执行中间件链的下一个中间件
 func CustomRecoveryWithWriter(out io.Writer, handle RecoveryFunc) HandlerFunc {
 	var logger *log.Logger
 	if out != nil {

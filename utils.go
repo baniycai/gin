@@ -51,6 +51,7 @@ func WrapH(h http.Handler) HandlerFunc {
 }
 
 // H is a shortcut for map[string]any
+// todo 搞个简写，蛮不错的，不用到处写这一大坨。可以学习下
 type H map[string]any
 
 // MarshalXML allows type H to be used with xml.Marshal.

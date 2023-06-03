@@ -8,6 +8,10 @@ package binding
 
 import "net/http"
 
+// 在 HTTP 协议中，Content-Type 头字段的语法规则是 "type/subtype" 的形式。其中，“type”表示媒体类型的类别，而“subtype”表示具体的媒体类型。
+// 在上述常见的 Content-Type 中，“application” 表示媒体类型属于应用程序数据，也就是说，这些 Content-Type 用于表示传输应用程序特定的数据格式或协议。
+// 除了 application 类型之外，还有 text、image、audio、video 等其他类型，每种类型都用于表示特定的媒体格式或数据类型。
+
 // Content-Type MIME of the most common data formats.
 const (
 	MIMEJSON              = "application/json"
@@ -27,6 +31,11 @@ const (
 // Binding describes the interface which needs to be implemented for binding the
 // data present in the request such as JSON request body, query parameters or
 // the form POST.
+// todo 跟render一样，都是贼牛逼的接口设计，可以收藏
+/* NOTE Name用来返回该绑定器的名称，如json、xml、form
+Bind则是一个比较关键的方法，通常是取http.Request的body，根据绑定器的类型，将body的内容进行不同的处理，比如json解析、xml解析或者是表单(form)解析
+之后将其值绑定到any类型的参数上，最后使用校验器来绑定的结果进行校验，主要是通过反射取binding这个tag来校验，比如binding的值为required，则该字段必须有值，否则返回err
+*/
 type Binding interface {
 	Name() string
 	Bind(*http.Request, any) error
@@ -88,6 +97,7 @@ var (
 
 // Default returns the appropriate Binding instance based on the HTTP method
 // and the content type.
+// 结合请求方法和参数类型来返回不同的绑定器
 func Default(method, contentType string) Binding {
 	if method == http.MethodGet {
 		return Form

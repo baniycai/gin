@@ -10,6 +10,7 @@ import (
 )
 
 // Delims represents a set of Left and Right delimiters for HTML template rendering.
+// html模板的左右定界符
 type Delims struct {
 	// Left delimiter, defaults to {{.
 	Left string

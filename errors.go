@@ -30,6 +30,7 @@ const (
 	ErrorTypeNu = 2
 )
 
+// todo 将error做一层包装，添加一些额外的信息和方法，还蛮不错的，不过目前貌似没有看到啥应用场景
 // Error represents a error's specification.
 type Error struct {
 	Err  error

@@ -19,6 +19,7 @@ func (formBinding) Name() string {
 	return "form"
 }
 
+// Bind 对与formBinding，其绑定是通过反射取form这个tag的
 func (formBinding) Bind(req *http.Request, obj any) error {
 	if err := req.ParseForm(); err != nil {
 		return err

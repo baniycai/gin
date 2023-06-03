@@ -46,6 +46,7 @@ func (err SliceValidationError) Error() string {
 var _ StructValidator = (*defaultValidator)(nil)
 
 // ValidateStruct receives any kind of type, but only performed struct or pointer to struct type.
+// 通过反射来校验(反射取binding tag值)解析后的参数值是否符合要求，只校验struct或者指向struct的指针(最终也是递归到struct啦)
 func (v *defaultValidator) ValidateStruct(obj any) error {
 	if obj == nil {
 		return nil
@@ -56,7 +57,7 @@ func (v *defaultValidator) ValidateStruct(obj any) error {
 	case reflect.Ptr:
 		return v.ValidateStruct(value.Elem().Interface())
 	case reflect.Struct:
-		return v.validateStruct(obj)
+		return v.validateStruct(obj) // 这里进行struct的校验
 	case reflect.Slice, reflect.Array:
 		count := value.Len()
 		validateRet := make(SliceValidationError, 0)

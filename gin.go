@@ -89,17 +89,19 @@ type Engine struct {
 	// For example if /foo/ is requested but a route only exists for /foo, the
 	// client is redirected to /foo with http status code 301 for GET requests
 	// and 307 for all other request methods.
+	// 如果请求为/foo/，但是只存在/foo的路由时，是否重定向到/foo
 	RedirectTrailingSlash bool
 
 	// RedirectFixedPath if enabled, the router tries to fix the current request path, if no
 	// handle is registered for it.
-	// First superfluous path elements like ../ or // are removed.
+	// First superfluous(多余的) path elements like ../ or // are removed.
 	// Afterwards the router does a case-insensitive lookup of the cleaned path.
 	// If a handle can be found for this route, the router makes a redirection
 	// to the corrected path with status code 301 for GET requests and 307 for
 	// all other request methods.
 	// For example /FOO and /..//Foo could be redirected to /foo.
 	// RedirectTrailingSlash is independent of this option.
+	// 是否将/..//Foo这种具有多余字符串的path进行修整，之后重定向到修整后的path，如/FOO或/..//Foo变成/foo
 	RedirectFixedPath bool
 
 	// HandleMethodNotAllowed if enabled, the router checks if another method is allowed for the
@@ -108,6 +110,8 @@ type Engine struct {
 	// and HTTP status code 405.
 	// If no other Method is allowed, the request is delegated to the NotFound
 	// handler.
+	// 若当前请求无法被路由，如果HandleMethodNotAllowed=true，则检查是否有其它方法适配当前路由，有则返回'Method Not Allowed'，就是提示请求方换个method啦
+	// 若其它方法的路由也找不到，就直接404啦
 	HandleMethodNotAllowed bool
 
 	// ForwardedByClientIP if enabled, client IP will be parsed from the request's headers that
@@ -154,14 +158,14 @@ type Engine struct {
 	// ContextWithFallback enable fallback Context.Deadline(), Context.Done(), Context.Err() and Context.Value() when Context.Request.Context() is not nil.
 	ContextWithFallback bool
 
-	delims           render.Delims
+	delims           render.Delims // 定界符，包括左右定界符
 	secureJSONPrefix string
 	HTMLRender       render.HTMLRender
-	FuncMap          template.FuncMap
-	allNoRoute       HandlersChain
-	allNoMethod      HandlersChain
-	noRoute          HandlersChain
-	noMethod         HandlersChain
+	FuncMap          template.FuncMap // 本质上是map[string]any，any是一个func
+	allNoRoute       HandlersChain    // =Handlers(中间件链)+noRoute
+	allNoMethod      HandlersChain    // =Handlers(中间件链)+noMethod
+	noRoute          HandlersChain    // 找不到路由时的处理方法，默认是返回404
+	noMethod         HandlersChain    // 当Engine.HandleMethodNotAllowed = true时的处理方法
 	pool             sync.Pool
 	trees            methodTrees
 	maxParams        uint16
@@ -304,6 +308,7 @@ func (engine *Engine) NoMethod(handlers ...HandlerFunc) {
 // Use attaches a global middleware to the router. i.e. the middleware attached through Use() will be
 // included in the handlers chain for every single request. Even 404, 405, static files...
 // For example, this is the right place for a logger or error management middleware.
+// NOTE 添加中间件，可以在HandlerFunc中调用c.Next()来控制中间件的执行是在handlers前、后或者是前后都有
 func (engine *Engine) Use(middleware ...HandlerFunc) IRoutes {
 	engine.RouterGroup.Use(middleware...)
 	engine.rebuild404Handlers()
@@ -567,12 +572,14 @@ func (engine *Engine) RunListener(listener net.Listener) (err error) {
 }
 
 // ServeHTTP conforms to the http.Handler interface.
+// NOTE 基本所有的web框架都是酱紫啦，实现这个接口，将请求接进来后自己做路由分发处理
 func (engine *Engine) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	c := engine.pool.Get().(*Context)
+	c := engine.pool.Get().(*Context) // 取缓存，牛逼
+	// NOTE 一堆重置，可见这里的缓存不是为了复用，而是为了减少内存频繁分配导致的垃圾回收。不过好像大部分场景都不能复用
 	c.writermem.reset(w)
 	c.Request = req
 	c.reset()
-
+	// todo 还没看，太复杂了...
 	engine.handleHTTPRequest(c)
 
 	engine.pool.Put(c)
@@ -603,6 +610,7 @@ func (engine *Engine) handleHTTPRequest(c *Context) {
 	}
 
 	// Find root of the tree for the given HTTP method
+	// NOTE 找到方法树中当前请求方法对应的root node
 	t := engine.trees
 	for i, tl := 0, len(t); i < tl; i++ {
 		if t[i].method != httpMethod {
@@ -610,14 +618,15 @@ func (engine *Engine) handleHTTPRequest(c *Context) {
 		}
 		root := t[i].root
 		// Find route in tree
-		value := root.getValue(rPath, c.params, c.skippedNodes, unescape)
+		// todo 这个没看，太复杂了...
+		value := root.getValue(rPath, c.params, c.skippedNodes, unescape) // 应该是找到能处理该path的handlers（挂载在叶子节点）
 		if value.params != nil {
 			c.Params = *value.params
 		}
 		if value.handlers != nil {
 			c.handlers = value.handlers
 			c.fullPath = value.fullPath
-			c.Next()
+			c.Next() // NOTE 开始遍历handlers，进行请求的链式处理，通常只有一个handler啦
 			c.writermem.WriteHeaderNow()
 			return
 		}
@@ -632,7 +641,7 @@ func (engine *Engine) handleHTTPRequest(c *Context) {
 		}
 		break
 	}
-
+	// 对不到对应方法的root node时
 	if engine.HandleMethodNotAllowed {
 		for _, tree := range engine.trees {
 			if tree.method == httpMethod {
@@ -651,6 +660,9 @@ func (engine *Engine) handleHTTPRequest(c *Context) {
 
 var mimePlain = []string{MIMEPlain}
 
+// 找不到对应路由时的处理
+// 执行allNoRoute，并最终返回404，感觉在c.Next()中应该是可以通过c.Writer来写入数据，
+// 使得c.writermem.Written()=true而直接返回，不用404，所以这里严重怀疑writermem和Writer底层是一个东西，这样调用Writer才会影响到writermem的Written方法的返回结果
 func serveError(c *Context, code int, defaultMessage []byte) {
 	c.writermem.status = code
 	c.Next()
